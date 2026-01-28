@@ -1,0 +1,7 @@
+
+*.user
+build/
+__bak20200801.ok/
+dll/
+ffmpeg/
+sdl/

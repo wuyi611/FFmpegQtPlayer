@@ -1,0 +1,12 @@
+<RCC>
+    <qresource prefix="/">
+        <file>image/MOVIE.png</file>
+        <file>image/MUSIC.jpg</file>
+        <file>image/pause.ico</file>
+        <file>image/play.ico</file>
+        <file>image/player.ico</file>
+        <file>image/stop.ico</file>
+        <file>qss/main.qss</file>
+        <file>image/headxx.png</file>
+    </qresource>
+</RCC>
