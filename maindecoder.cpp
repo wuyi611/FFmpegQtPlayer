@@ -16,7 +16,9 @@ MainDecoder::MainDecoder() :
     av_init_packet(&seekPacket);
     seekPacket.data = (uint8_t *)"FLUSH";
 
+    // 连接信号：音频播放结束 -> 通知主解码器
     connect(audioDecoder, &AudioDecoder::playFinished, this, &MainDecoder::audioFinished);
+    // 连接信号：文件读取结束 -> 通知音频解码器
     connect(this, &MainDecoder::readFinished, audioDecoder, &AudioDecoder::readFileFinished);
 }
 
@@ -25,15 +27,17 @@ MainDecoder::~MainDecoder()
 
 }
 
+// 显示img
 void MainDecoder::displayVideo(QImage image)
 {
-    // 显示img
+
     emit gotVideo(image);
 }
 
+// 重置播放器状态
 void MainDecoder::clearData()
 {
-    // 清空数据
+
     videoIndex = -1,
     audioIndex = -1,
     subtitleIndex = -1,
@@ -53,14 +57,16 @@ void MainDecoder::clearData()
     videoClk = 0;
 }
 
+// 更新播放状态
 void MainDecoder::setPlayState(MainDecoder::PlayState state)
 {
-    // 设置播放状态
+
 //    qDebug() << "Set state: " << state;
     emit playStateChanged(state);
     playState = state;
 }
 
+// 判断是否为实时流
 bool MainDecoder::isRealtime(AVFormatContext *pFormatCtx)
 {
     if (!strcmp(pFormatCtx->iformat->name, "rtp")
