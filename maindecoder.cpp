@@ -276,19 +276,19 @@ void MainDecoder::pauseVideo()
     }
 }
 
-// 获取音量
+// 主线程获取音量
 int MainDecoder::getVolume()
 {
     return audioDecoder->getVolume();
 }
 
-// 设置音量
+// 主线程设置音量
 void MainDecoder::setVolume(int volume)
 {
     audioDecoder->setVolume(volume);
 }
 
-// 获取当前时间（音频作为主时钟）
+// 主线程获取当前时间（音频作为主时钟）
 double MainDecoder::getCurrentTime()
 {
     if (audioIndex >= 0) {
@@ -298,7 +298,7 @@ double MainDecoder::getCurrentTime()
     return 0;
 }
 
-// 跳转请求拦截
+// 主线程跳转请求拦截
 void MainDecoder::seekProgress(qint64 pos)
 {
     if (!isSeek) {
