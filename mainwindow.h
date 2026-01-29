@@ -97,6 +97,7 @@ private slots:
 
     void showVideo(QImage);
 
+
 signals:
     void selectedVideoFile(QString file, QString type);
     void stopVideo();

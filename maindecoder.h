@@ -1,4 +1,4 @@
-#ifndef DECODER_H
+﻿#ifndef DECODER_H
 #define DECODER_H
 
 #include <QThread>

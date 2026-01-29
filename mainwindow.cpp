@@ -117,25 +117,31 @@ void MainWindow::initFFmpeg()
 
 void MainWindow::initSlot()
 {
-    // 连接信号与槽
-    connect(ui->btnOpenLocal,   SIGNAL(clicked(bool)), this, SLOT(buttonClickSlot()));
-    connect(ui->btnOpenUrl,     SIGNAL(clicked(bool)), this, SLOT(buttonClickSlot()));
-    connect(ui->btnStop,        SIGNAL(clicked(bool)), this, SLOT(buttonClickSlot()));
-    connect(ui->btnPause,       SIGNAL(clicked(bool)), this, SLOT(buttonClickSlot()));
-    connect(ui->lineEdit,       SIGNAL(cursorPositionChanged(int,int)),     this, SLOT(editText()));
+    // 1. 按钮点击连接 (指向同一个槽函数)
+    connect(ui->btnOpenLocal, &QPushButton::clicked, this, &MainWindow::buttonClickSlot);
+    connect(ui->btnOpenUrl,   &QPushButton::clicked, this, &MainWindow::buttonClickSlot);
+    connect(ui->btnStop,      &QPushButton::clicked, this, &MainWindow::buttonClickSlot);
+    connect(ui->btnPause,     &QPushButton::clicked, this, &MainWindow::buttonClickSlot);
 
-    connect(m_menuTimer,      SIGNAL(timeout()), this, SLOT(timerSlot()));
-    connect(m_progressTimer,  SIGNAL(timeout()), this, SLOT(timerSlot()));
+    // 2. 输入框位置变化
+    connect(ui->lineEdit, &QLineEdit::cursorPositionChanged, this, &MainWindow::editText);
 
-    connect(ui->videoProgressSlider,    SIGNAL(sliderMoved(int)), this, SLOT(seekProgress(int)));
+    // 3. 定时器连接
+    connect(m_menuTimer,     &QTimer::timeout, this, &MainWindow::timerSlot);
+    connect(m_progressTimer, &QTimer::timeout, this, &MainWindow::timerSlot);
 
-    connect(this, SIGNAL(selectedVideoFile(QString,QString)),   m_MainDecoder, SLOT(decoderFile(QString,QString)));
-    connect(this, SIGNAL(stopVideo()),                          m_MainDecoder, SLOT(stopVideo()));
-    connect(this, SIGNAL(pauseVideo()),                         m_MainDecoder, SLOT(pauseVideo()));
+    // 4. 进度条拖动
+    connect(ui->videoProgressSlider, &QSlider::sliderMoved, this, &MainWindow::seekProgress);
 
-    connect(m_MainDecoder, SIGNAL(playStateChanged(MainDecoder::PlayState)),  this, SLOT(playStateChanged(MainDecoder::PlayState)));
-    connect(m_MainDecoder, SIGNAL(gotVideoTime(qint64)),                  this, SLOT(videoTime(qint64)));
-    connect(m_MainDecoder, SIGNAL(gotVideo(QImage)),                      this, SLOT(showVideo(QImage)));
+    // 5. MainWindow 发出的指令信号 (连向解码器)
+    connect(this, &MainWindow::selectedVideoFile, m_MainDecoder, &MainDecoder::decoderFile);
+    connect(this, &MainWindow::stopVideo,         m_MainDecoder, &MainDecoder::stopVideo);
+    connect(this, &MainWindow::pauseVideo,        m_MainDecoder, &MainDecoder::pauseVideo);
+
+    // 6. 解码器反馈给 MainWindow 的信号
+    connect(m_MainDecoder, &MainDecoder::playStateChanged, this, &MainWindow::playStateChanged);
+    connect(m_MainDecoder, &MainDecoder::gotVideoTime,     this, &MainWindow::videoTime);
+    connect(m_MainDecoder, &MainDecoder::gotVideo,         this, &MainWindow::showVideo);
 }
 
 void MainWindow::initTray()
@@ -495,6 +501,7 @@ void MainWindow::playVideo(QString file)
         }
         ui->titleLable->setStyleSheet("color:rgb(25, 125, 203);font-size:24px;background: transparent;");
         ui->titleLable->setText(QString("当前播放：%1").arg(getFilenameFromPath(file)));
+        ui->titleLable->setVisible(true);
     }
 
     emit selectedVideoFile(file, currentPlayType);
@@ -531,13 +538,15 @@ void MainWindow::buttonClickSlot()
 
 void MainWindow::trayIconActivated(QSystemTrayIcon::ActivationReason reason)
 {
+    // 系统托盘图标交互
     switch (reason) {
+    // 双击
     case QSystemTrayIcon::DoubleClick:
-        this->showNormal();
-        this->raise();
-        this->activateWindow();
+        this->showNormal();         // 显示窗口
+        this->raise();              // 将窗口置于最顶层
+        this->activateWindow();     // 设置位活动窗口
         break;
-
+    // 单击
     case QSystemTrayIcon::Trigger:
     default:
         break;
@@ -695,4 +704,5 @@ void MainWindow::playStateChanged(MainDecoder::PlayState state)
         break;
     }
 }
+
 

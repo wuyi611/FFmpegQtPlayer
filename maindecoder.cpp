@@ -12,11 +12,12 @@ MainDecoder::MainDecoder() :
     audioDecoder(new AudioDecoder),
     filterGraph(NULL)
 {
+    // 清空解码线程缓存（旧API）
     av_init_packet(&seekPacket);
     seekPacket.data = (uint8_t *)"FLUSH";
 
-    connect(audioDecoder, SIGNAL(playFinished()), this, SLOT(audioFinished()));
-    connect(this, SIGNAL(readFinished()), audioDecoder, SLOT(readFileFinished()));
+    connect(audioDecoder, &AudioDecoder::playFinished, this, &MainDecoder::audioFinished);
+    connect(this, &MainDecoder::readFinished, audioDecoder, &AudioDecoder::readFileFinished);
 }
 
 MainDecoder::~MainDecoder()
@@ -26,11 +27,13 @@ MainDecoder::~MainDecoder()
 
 void MainDecoder::displayVideo(QImage image)
 {
+    // 显示img
     emit gotVideo(image);
 }
 
 void MainDecoder::clearData()
 {
+    // 清空数据
     videoIndex = -1,
     audioIndex = -1,
     subtitleIndex = -1,
@@ -52,6 +55,7 @@ void MainDecoder::clearData()
 
 void MainDecoder::setPlayState(MainDecoder::PlayState state)
 {
+    // 设置播放状态
 //    qDebug() << "Set state: " << state;
     emit playStateChanged(state);
     playState = state;
