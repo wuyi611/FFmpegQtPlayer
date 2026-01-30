@@ -4,6 +4,7 @@
 #include <QThread>
 #include <QImage>
 
+
 extern "C"
 {
 #include "libavfilter/avfiltergraph.h"
@@ -69,7 +70,7 @@ private:
     bool gotStop;
     bool isPause;
     bool isSeek;
-    bool isReadFinished;
+    bool isReadFinished;                //
     bool isDecodeFinished;
 
     AVFormatContext *pFormatCtx;

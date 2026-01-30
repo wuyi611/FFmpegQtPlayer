@@ -191,7 +191,7 @@ out:
 // 开始解码线程
 void MainDecoder::decoderFile(QString file, QString type)
 {
-    // 暂停旧线程
+    // 先暂停旧线程
     qDebug() << "File name:" << file << ", type:" << type;
     if (playState != STOP) {
         isStop = true;
@@ -233,6 +233,7 @@ void MainDecoder::stopVideo()
         return;
     }
 
+    // gotstop代表主线程主动结束，等待解码线程退出循环后设置为stop
     gotStop = true;
     isStop  = true;
     // 通知音频解码线程停止解码
@@ -307,16 +308,17 @@ void MainDecoder::seekProgress(qint64 pos)
     }
 }
 
+
 double MainDecoder::synchronize(AVFrame *frame, double pts)
 {
     double delay;
-
     if (pts != 0) {
-        videoClk = pts; // Get pts,then set video clock to it
+        videoClk = pts; // 如果当前帧自带 PTS，则用它更新视频时钟
     } else {
-        pts = videoClk; // Don't get pts,set it to video clock
+        pts = videoClk; // 如果当前帧没有 PTS，则沿用上一次计算出的视频时钟
     }
 
+    // 使用时间基预测下次时间戳
     delay = av_q2d(pCodecCtx->time_base);
     delay += frame->repeat_pict * (delay * 0.5);
 
@@ -330,6 +332,7 @@ int MainDecoder::videoThread(void *arg)
     int ret;
     double pts;
     AVPacket packet;
+    // 将this指针强转为MainDecoder来访问类的公有变量
     MainDecoder *decoder = (MainDecoder *)arg;
     AVFrame *pFrame  = av_frame_alloc();
 
@@ -344,27 +347,31 @@ int MainDecoder::videoThread(void *arg)
         }
 
         if (decoder->videoQueue.queueSize() <= 0) {
-            /* while video file read finished exit decode thread,
-             * otherwise just delay for data input
-             */
+            // 如果队列是空的，且 isReadFinished 标志为真（表示文件读取线程已经读完了所有数据）
+            // 说明视频已经播放完了，跳出主循环，结束线程
             if (decoder->isReadFinished) {
                 break;
             }
+            // 如果队列为空但文件还没读完（数据还没送来），让线程休眠 1 毫秒，防止空转消耗 CPU
+            // 跳过本次循环，回到开头等待数据到来
             SDL_Delay(1);
             continue;
         }
 
+        // 从视频队列中取出一个数据包（Packet）存入 packet 变量中。参数 true 通常表示这是一个阻塞操作
         decoder->videoQueue.dequeue(&packet, true);
 
-        /* flush codec buffer while received flush packet */
+        // 检查取出的包的数据内容是不是字符串 "FLUSH"。这通常是自定义的特殊包，用于在用户**拖动进度条（Seek）**时清空缓存。
         if (!strcmp((char *)packet.data, "FLUSH")) {
             qDebug() << "Seek video";
+            // 调用 FFmpeg API 清空解码器上下文中的内部缓存。这是 Seek 操作必须的，否则画面会花屏。
             avcodec_flush_buffers(decoder->pCodecCtx);
             av_packet_unref(&packet);
             continue;
         }
 
         ret = avcodec_send_packet(decoder->pCodecCtx, &packet);
+        // 检查返回值。如果返回值小于0，且错误不是“需要更多数据(EAGAIN)”或“文件结束(EOF)”，则表示发生了真正的错误
         if ((ret < 0) && (ret != AVERROR(EAGAIN)) && (ret != AVERROR_EOF)) {
             qDebug() << "Video send to decoder failed, error code: " << ret;
             av_packet_unref(&packet);
@@ -379,6 +386,8 @@ int MainDecoder::videoThread(void *arg)
             continue;
         }
 
+        // 获取当前帧的显示时间戳 pts。如果该帧没有标记时间戳（等于 AV_NOPTS_VALUE）
+        // 将 pts 强制置为 0，防止无效值参与计算
         if ((pts = pFrame->pts) == AV_NOPTS_VALUE) {
             pts = 0;
         }
@@ -387,38 +396,54 @@ int MainDecoder::videoThread(void *arg)
         pts *= av_q2d(decoder->videoStream->time_base);
         pts =  decoder->synchronize(pFrame, pts);
 
+        // 判断是否存在音频流（audioIndex >= 0）。
+        // 只有有音频时，才需要视频去追音频
         if (decoder->audioIndex >= 0) {
+            // 视频同步音频循环
             while (1) {
-                if (decoder->isStop) {
+                if (decoder->isStop || decoder->isPause) {
                     break;
                 }
 
+                // 获取当前音频播放到的时间点（秒），作为同步的基准时钟。
                 double audioClk = decoder->audioDecoder->getAudioClock();
-                pts = decoder->videoClk;
 
+                // 若追求高精度同步则注释此行代码
+                // // 用预测的下一帧视频和音频同步
+                // pts = decoder->videoClk;
+
+                // 若视频时间戳等于音频时间戳则退出同步循环，立即渲染此帧画面
                 if (pts <= audioClk) {
                      break;
                 }
+
+                // 如果视频快了（pts > audioClk），计算两者的时间差，并转换为毫秒
                 int delayTime = (pts - audioClk) * 1000;
 
+                // 限制最大休眠时间为 5 毫秒。这是为了防止休眠太久导致无法响应操作，采用“小步快跑”的策略
                 delayTime = delayTime > 5 ? 5 : delayTime;
 
                 SDL_Delay(delayTime);
             }
         }
 
+        // 将解码出来的原始帧 pFrame 添加到滤镜图的输入端（filterSrcCxt）。
+        // 这个滤镜图通常用于将 YUV 格式转换为 RGB 格式
         if (av_buffersrc_add_frame(decoder->filterSrcCxt, pFrame) < 0) {
             qDebug() << "av buffersrc add frame failed.";
             av_packet_unref(&packet);
             continue;
         }
 
+        // 从滤镜图的输出端（filterSinkCxt）获取处理好（已转为 RGB）的帧，覆盖写入 pFrame
         if (av_buffersink_get_frame(decoder->filterSinkCxt, pFrame) < 0) {
             qDebug() << "av buffersrc get frame failed.";
             av_packet_unref(&packet);
             continue;
         } else {
-            //到底如何得到一帧图片并渲染？ qt,
+            // 使用 pFrame 中的数据（data[0] 指向像素数组）构造一个 Qt 的 QImage 对象。
+            // 这里假设滤镜已经转成了 RGB32 格式，大小为宽 x 高。
+            // 注意这里没有发生数据拷贝，只是引用。
             QImage tmpImage(pFrame->data[0], decoder->pCodecCtx->width, decoder->pCodecCtx->height, QImage::Format_RGB32);
             /* deep copy, otherwise when tmpImage data change, this image cannot display */
             QImage image = tmpImage.copy();
@@ -439,8 +464,10 @@ int MainDecoder::videoThread(void *arg)
 
     SDL_Delay(100);
 
+    // 解码完成
     decoder->isDecodeFinished = true;
 
+    // 如果是主线程通知结束则是stop否则为finish
     if (decoder->gotStop) {
         decoder->setPlayState(MainDecoder::STOP);
     } else {
