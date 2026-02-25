@@ -58,3 +58,6 @@ RESOURCES += \
 DISTFILES += \
     image/icon.rc
 RC_FILE = image/icon.rc
+
+
+

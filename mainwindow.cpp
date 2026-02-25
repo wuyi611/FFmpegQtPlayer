@@ -654,6 +654,7 @@ void MainWindow::showVideo(QImage image)
     update();
 }
 
+// 播放状态机
 void MainWindow::playStateChanged(MainDecoder::PlayState state)
 {
     switch (state) {

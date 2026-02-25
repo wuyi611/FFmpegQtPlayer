@@ -61,7 +61,6 @@ void MainDecoder::clearData()
 void MainDecoder::setPlayState(MainDecoder::PlayState state)
 {
 
-//    qDebug() << "Set state: " << state;
     // 通知主线程状态改变状态
     emit playStateChanged(state);
     playState = state;
@@ -500,9 +499,11 @@ void MainDecoder::run()
         return;
     }
 
+    // 判断是否是实时流
     realTime = isRealtime(pFormatCtx);
 
-//    av_dump_format(pFormatCtx, 0, 0, 0);  // just use in debug output
+    // 主要作用是将多媒体文件的**元数据（Metadata）和流信息（Stream Information）**以格式化的方式直接打印到控制台
+    // av_dump_format(pFormatCtx, 0, 0, 0);  // just use in debug output
 
     /* find video & audio stream index */
     for (unsigned int i = 0; i < pFormatCtx->nb_streams; i++) {
@@ -537,12 +538,12 @@ void MainDecoder::run()
     }
 
     if (!realTime) {
+        // 给主线程发送时长
         emit gotVideoTime(pFormatCtx->duration);
         timeTotal = pFormatCtx->duration;
     } else {
         emit gotVideoTime(0);
     }
-//    qDebug() << timeTotal;
 
     if (audioIndex >= 0) {
         // 打开音频解码器：入口，注册回调函数
