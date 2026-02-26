@@ -66,9 +66,9 @@ private:
     double seekTime;
 
     PlayState playState;
-    bool isStop;
+    bool isStop;        // maindecoder文件读取线程及其子线程解码线程的停止标志位
     bool gotStop;
-    bool isPause;
+    bool isPause;       // maindecoder文件读取线程及其子线程解码线程的暂停标志位
     bool isSeek;
     bool isReadFinished;                //
     bool isDecodeFinished;
@@ -77,7 +77,7 @@ private:
 
     AVCodecContext *pCodecCtx;          // video codec context
 
-    AvPacketQueue videoQueue;
+    AvPacketQueue videoQueue;           // 原始帧队列
     AvPacketQueue subtitleQueue;
 
     AVStream *videoStream;
