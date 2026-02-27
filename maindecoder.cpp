@@ -13,6 +13,7 @@ MainDecoder::MainDecoder() :
     filterGraph(NULL)
 {
     // 清空解码线程缓存（旧API）
+    // 先初始化为默认值
     av_init_packet(&seekPacket);
     seekPacket.data = (uint8_t *)"FLUSH";
 
@@ -483,7 +484,7 @@ void MainDecoder::run()
 
     AVPacket pkt, *packet = &pkt;        // packet use in decoding
 
-    int seekIndex;  
+    int seekIndex;          // 跳转的流索引
     bool realTime;
 
     pFormatCtx = avformat_alloc_context();
@@ -554,6 +555,7 @@ void MainDecoder::run()
     }
 
     if (currentType == "video") {
+        // 创建解码线程
         /* find video decoder */        
         pCodecCtx = avcodec_alloc_context3(NULL);
         avcodec_parameters_to_context(pCodecCtx, pFormatCtx->streams[videoIndex]->codecpar);
@@ -582,12 +584,15 @@ void MainDecoder::run()
     setPlayState(MainDecoder::PLAYING);
 
     while (true) {
+        // 开启文件读取循环
         if (isStop) {
+            // 退出循环，线程停止
             break;
         }
 
         /* do not read next frame & delay to release cpu utilization */
         if (isPause) {
+            // 线程暂停
             SDL_Delay(10);
             continue;
         }
@@ -596,6 +601,7 @@ void MainDecoder::run()
  * & have out of loop, then jump back to seek position
  */
 seek:
+        // 执行跳转操作
         if (isSeek) {
             if (currentType == "video") {
                 seekIndex = videoIndex;
@@ -603,28 +609,37 @@ seek:
                 seekIndex = audioIndex;
             }
 
+            // 获取FFmpeg 内部时间基准(通常是 1/1000000)
             AVRational aVRational = av_get_time_base_q();
+            // 将显示时间转换为视频内部刻度
             seekPos = av_rescale_q(seekPos, aVRational, pFormatCtx->streams[seekIndex]->time_base);
 
+            // 执行跳转
+            // AVSEEK_FLAG_BACKWARD：这是一个非常稳妥的标志。它的意思是：如果 seekPos 处没有关键帧，就往**回（前）**找最近的一个 I 帧。
+            // 这样能保证跳转后画面能立即正常显示，而不是花屏。
             if (av_seek_frame(pFormatCtx, seekIndex, seekPos, AVSEEK_FLAG_BACKWARD) < 0) {
                 qDebug() << "Seek failed.";
 
             } else {
+                // 清空音频解码缓存
                 audioDecoder->emptyAudioData();
                 audioDecoder->packetEnqueue(&seekPacket);
 
                 if (currentType == "video") {
+                    // 清空视频包队列
                     videoQueue.empty();
                     videoQueue.enqueue(&seekPacket);
+                    // 先重置时间戳
                     videoClk = 0;
                 }
             }
-
+            // 重置标志位
             isSeek = false;
         }
 
         if (currentType == "video") {
             if (videoQueue.queueSize() > 512) {
+                // 若文件缓冲区已满则等待
                 SDL_Delay(10);
                 continue;
             }
