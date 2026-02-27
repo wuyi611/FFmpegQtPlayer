@@ -1,4 +1,4 @@
-#include "avpacketqueue.h"
+﻿#include "avpacketqueue.h"
 
 AvPacketQueue::AvPacketQueue()
 {
@@ -6,11 +6,16 @@ AvPacketQueue::AvPacketQueue()
     cond    = SDL_CreateCond();
 }
 
+// 原始帧入队
 void AvPacketQueue::enqueue(AVPacket *packet)
 {
+    AVPacket pktInQueue;
+    // 在锁外面先接管所有权，减少锁持有的时间
+    av_packet_move_ref(&pktInQueue, packet);
+
     SDL_LockMutex(mutex);
 
-    queue.enqueue(*packet);
+    queue.enqueue(pktInQueue);
 
     SDL_CondSignal(cond);
     SDL_UnlockMutex(mutex);

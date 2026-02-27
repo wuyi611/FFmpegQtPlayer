@@ -1,4 +1,4 @@
-#include <QDebug>
+﻿#include <QDebug>
 
 #include "audiodecoder.h"
 
@@ -199,11 +199,13 @@ void AudioDecoder::stopAudio()
     isStop = true;
 }
 
+// 原始帧入队
 void AudioDecoder::packetEnqueue(AVPacket *packet)
 {
     packetQueue.enqueue(packet);
 }
 
+// 清空音频缓存
 void AudioDecoder::emptyAudioData()
 {
     audioBuf = nullptr;

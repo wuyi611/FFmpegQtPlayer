@@ -66,12 +66,12 @@ private:
     double seekTime;
 
     PlayState playState;
-    bool isStop;        // maindecoder文件读取线程及其子线程解码线程的停止标志位
+    bool isStop;        // 解复用线程及其子线程解码线程的停止标志位
     bool gotStop;
-    bool isPause;       // maindecoder文件读取线程及其子线程解码线程的暂停标志位
+    bool isPause;       // 解复用线程及其子线程解码线程的暂停标志位
     bool isSeek;
-    bool isReadFinished;                //
-    bool isDecodeFinished;
+    bool isReadFinished;                // 文件读取完成标志位
+    bool isDecodeFinished;              // 解码完成标志位
 
     AVFormatContext *pFormatCtx;
 

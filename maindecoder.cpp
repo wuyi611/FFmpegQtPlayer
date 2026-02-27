@@ -647,6 +647,7 @@ seek:
 
         /* judge haven't reall all frame */
         if (av_read_frame(pFormatCtx, packet) < 0){
+            // 文件读完
             qDebug() << "Read file completed.";
             isReadFinished = true;
             emit readFinished();
@@ -655,19 +656,21 @@ seek:
         }
 
         if (packet->stream_index == videoIndex && currentType == "video") {
-            videoQueue.enqueue(packet); // video stream
-        } else if (packet->stream_index == audioIndex) {
-            audioDecoder->packetEnqueue(packet); // audio stream
+            videoQueue.enqueue(packet);             // 存入视频队列
+        }
+        else if (packet->stream_index == audioIndex) {
+            audioDecoder->packetEnqueue(packet);    // 存入音频队列
         } else if (packet->stream_index == subtitleIndex) {
-//            subtitleQueue.enqueue(packet);
-            av_packet_unref(packet);    // subtitle stream
+            //subtitleQueue.enqueue(packet);        // 字幕功能没有写
+            av_packet_unref(packet);                // subtitle stream
         } else {
             av_packet_unref(packet);
         }
     }
 
-//    qDebug() << isStop;
     while (!isStop) {
+        // 不停止的时候不断检测是否需要seek
+        // 因为文件已经读取完，所以此线程不需要检测是否暂停
         /* just use at audio playing */
         if (isSeek) {
             goto seek;
