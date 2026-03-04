@@ -653,7 +653,6 @@ void MainWindow::videoTime(qint64 time)
 void MainWindow::showVideo(QImage image)
 {
     this->m_video_image = image;
-    qDebug()<<image.isNull();
     update();
 }
 
