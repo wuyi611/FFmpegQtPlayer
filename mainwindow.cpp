@@ -32,7 +32,7 @@ MainWindow::MainWindow(QWidget *parent) :
     loopPlay(false),
     closeNotExit(false),
     playState(MainDecoder::STOP),
-    seekInterval(3),
+    seekInterval(5),
     m_bDrag(false)
 {
     ui->setupUi(this);
@@ -290,6 +290,7 @@ void MainWindow::keyReleaseEvent(QKeyEvent *event)
     case Qt::Key_Right:
         // 快进
         if (ui->videoProgressSlider->value() + seekInterval < ui->videoProgressSlider->maximum()) {
+
             progressVal = ui->videoProgressSlider->value() + seekInterval;
             m_MainDecoder->seekProgress(static_cast<qint64>(progressVal) * 1000000);
         }
@@ -601,6 +602,7 @@ void MainWindow::timerSlot()
         }
         qint64 currentTime = static_cast<qint64>(m_MainDecoder->getCurrentTime());
         ui->videoProgressSlider->setValue( static_cast<int>(currentTime) );
+
         ///qDebug() << "currentTime::" << currentTime;
         int hourCurrent = currentTime / 60 / 60;
         int minCurrent  = (currentTime / 60) % 60;
@@ -651,6 +653,7 @@ void MainWindow::videoTime(qint64 time)
 void MainWindow::showVideo(QImage image)
 {
     this->m_video_image = image;
+    qDebug()<<image.isNull();
     update();
 }
 

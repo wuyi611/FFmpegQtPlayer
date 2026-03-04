@@ -40,6 +40,7 @@ public:
     int getVolume();
     void setVolume(int volume);
 
+
 private:
     void run();
     void clearData();

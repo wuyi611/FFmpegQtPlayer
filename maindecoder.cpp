@@ -16,6 +16,7 @@ MainDecoder::MainDecoder() :
     // 先初始化为默认值
     av_init_packet(&seekPacket);
     seekPacket.data = (uint8_t *)"FLUSH";
+    seekPacket.size = 5;
 
     // 连接信号：音频播放结束 -> 通知主解码器
     connect(audioDecoder, &AudioDecoder::playFinished, this, &MainDecoder::audioFinished);
@@ -228,7 +229,7 @@ void MainDecoder::audioFinished()
 void MainDecoder::stopVideo()
 {
     if (playState == STOP) {
-        // 如果已经为停止状态直接设置状态为停止
+        // 如果已经为停止状态则再去通知主线程设置stop状态
         setPlayState(MainDecoder::STOP);
         return;
     }
@@ -362,10 +363,17 @@ int MainDecoder::videoThread(void *arg)
         decoder->videoQueue.dequeue(&packet, true);
 
         // 检查取出的包的数据内容是不是字符串 "FLUSH"。这通常是自定义的特殊包，用于在用户**拖动进度条（Seek）**时清空缓存。
-        if (!strcmp((char *)packet.data, "FLUSH")) {
+        if (packet.size == 5 && memcmp(packet.data, "FLUSH", 5) == 0) {
             qDebug() << "Seek video";
             // 调用 FFmpeg API 清空解码器上下文中的内部缓存。这是 Seek 操作必须的，否则画面会花屏。
             avcodec_flush_buffers(decoder->pCodecCtx);
+
+            // 2. 【新增】：抽干滤镜图（FilterGraph）里残留的旧帧，防止画面错乱
+            AVFrame *dummyFrame = av_frame_alloc();
+            while (av_buffersink_get_frame(decoder->filterSinkCxt, dummyFrame) >= 0) {
+                av_frame_unref(dummyFrame);
+            }
+            av_frame_free(&dummyFrame);
             av_packet_unref(&packet);
             continue;
         }
@@ -380,8 +388,17 @@ int MainDecoder::videoThread(void *arg)
 
         /// raw yuv
         ret = avcodec_receive_frame(decoder->pCodecCtx, pFrame);
-        if ((ret < 0) && (ret != AVERROR_EOF)) {
-            qDebug() << "Video frame decode failed, error code: " << ret;
+        if (ret == AVERROR(EAGAIN)) {
+            // 这是正常现象，不需要打印日志
+            // 直接释放当前 packet 并继续读取下一个 packet 即可
+            av_packet_unref(&packet);
+            continue;
+        } else if (ret == AVERROR_EOF) {
+            // 视频结束了
+            return 0;
+        } else if (ret < 0) {
+            // 只有走到这里，才是真正的解码失败（比如码流损坏）
+            qDebug() << "Video frame decode failed, error code:" << ret;
             av_packet_unref(&packet);
             continue;
         }
@@ -408,9 +425,8 @@ int MainDecoder::videoThread(void *arg)
                 // 获取当前音频播放到的时间点（秒），作为同步的基准时钟。
                 double audioClk = decoder->audioDecoder->getAudioClock();
 
-                // 若追求高精度同步则注释此行代码
                 // // 用预测的下一帧视频和音频同步
-                // pts = decoder->videoClk;
+                pts = decoder->videoClk;
 
                 // 若视频时间戳等于音频时间戳则退出同步循环，立即渲染此帧画面
                 if (pts <= audioClk) {
@@ -441,13 +457,32 @@ int MainDecoder::videoThread(void *arg)
             av_packet_unref(&packet);
             continue;
         } else {
+            // 【新增安全锁】：拦截滤镜图在异常状态下吐出的畸形帧
+            if (pFrame->width <= 0 || pFrame->height <= 0 || pFrame->data[0] == nullptr) {
+                qDebug() << "Filter graph generated an invalid frame after seek. Dropping.";
+                av_frame_unref(pFrame);
+                av_packet_unref(&packet);
+                continue;
+            }
+
+
             // 使用 pFrame 中的数据（data[0] 指向像素数组）构造一个 Qt 的 QImage 对象。
             // 这里假设滤镜已经转成了 RGB32 格式，大小为宽 x 高。
             // 注意这里没有发生数据拷贝，只是引用。
-            QImage tmpImage(pFrame->data[0], decoder->pCodecCtx->width, decoder->pCodecCtx->height, QImage::Format_RGB32);
-            /* deep copy, otherwise when tmpImage data change, this image cannot display */
-            QImage image = tmpImage.copy();
-            decoder->displayVideo(image);
+            // 【修复核心】：使用 pFrame 的真实宽高，并且强行绑定 linesize[0] 内存步长
+            QImage tmpImage(pFrame->data[0],
+                            pFrame->width,       // 弃用 decoder->pCodecCtx->width
+                            pFrame->height,      // 弃用 decoder->pCodecCtx->height
+                            pFrame->linesize[0], // 这是最关键的内存对齐参数！
+                            QImage::Format_RGB32);
+
+            if (tmpImage.isNull()) {
+                // 如果走到这里，说明这帧的内存确实坏了，静默丢弃，保护主线程不崩溃
+                qDebug() << "QImage creation failed. Memory might be misaligned.";
+            } else {
+                QImage image = tmpImage.copy();
+                decoder->displayVideo(image);
+            }
         }
 
         av_frame_unref(pFrame);
@@ -614,15 +649,22 @@ seek:
             // 将显示时间转换为视频内部刻度
             seekPos = av_rescale_q(seekPos, aVRational, pFormatCtx->streams[seekIndex]->time_base);
 
+
             // 执行跳转
             // AVSEEK_FLAG_BACKWARD：这是一个非常稳妥的标志。它的意思是：如果 seekPos 处没有关键帧，就往**回（前）**找最近的一个 I 帧。
             // 这样能保证跳转后画面能立即正常显示，而不是花屏。
+
+
             if (av_seek_frame(pFormatCtx, seekIndex, seekPos, AVSEEK_FLAG_BACKWARD) < 0) {
                 qDebug() << "Seek failed.";
-
+                av_seek_frame(pFormatCtx, seekIndex, seekPos, AVSEEK_FLAG_ANY);
             } else {
+                isReadFinished = false;
                 // 清空音频解码缓存
                 audioDecoder->emptyAudioData();
+
+                double targetTimeSec = seekPos * av_q2d(pFormatCtx->streams[seekIndex]->time_base);
+                audioDecoder->setClock(targetTimeSec);
                 audioDecoder->packetEnqueue(&seekPacket);
 
                 if (currentType == "video") {
